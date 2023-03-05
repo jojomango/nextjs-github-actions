@@ -23,7 +23,7 @@ jobs:
           tags: jojomago/nextjs-github-action:latest
           file: ./Dockerfile
       - name: Deploy to Docker
-        uses: appleboy/ssh-action@master
+        uses: appleboy/ssh-action@v0.1.4
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
