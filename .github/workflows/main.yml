@@ -23,14 +23,14 @@ jobs:
           tags: jojomago/nextjs-github-action:latest
           file: ./Dockerfile
       - name: Deploy to Docker
-        uses: appleboy/ssh-action@master
+        uses: webfactory/ssh-agent@v0.5.0
         with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_EC2_KEY }}
-          port: ${{ secrets.SSH_PORT }}
-          script: |
-            docker stop nextjs-docker-container || true
-            docker rm nextjs-docker-container || true
-            docker pull jojomago/nextjs-github-action:latest
-            docker run -d -p 3000:3000 --name nextjs-docker-container jojomago/nextjs-github-action:latest
+          ssh-private-key: ${{ secrets.SSH_EC2_KEY }}
+        env:
+          SSH_AUTH_SOCK: /tmp/ssh_agent.sock
+        run: |
+          ssh-add -k ${{ secrets.SSH_EC2_KEY }}
+          ssh -p ${{ secrets.SSH_PORT }} ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} 'docker stop nextjs-docker-container || true'
+          ssh -p ${{ secrets.SSH_PORT }} ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} 'docker rm nextjs-docker-container || true'
+          ssh -p ${{ secrets.SSH_PORT }} ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} 'docker pull jojomago/nextjs-github-action:latest'
+          ssh -p ${{ secrets.SSH_PORT }} ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} 'docker run -d -p 3000:3000 --name nextjs-docker-container jojomago/nextjs-github-action:latest'
