@@ -5,32 +5,68 @@ on:
     branches:
       - master
 
+env:
+  SSH_PRIVATE_KEY: ${{ secrets.SSH_EC2_KEY }}
+  SSH_USER: ${{ secrets.SSH_USER }}
+  SSH_HOST: ${{ secrets.SSH_HOST }}
+  DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+  DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
+  DOCKER_REPO: nextjs-github-action
+  APP_NAME: nextjs-app
+
 jobs:
-  build:
+  build-and-deploy:
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v2
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Setup Node.js environment
+        uses: actions/setup-node@v2
+        with:
+          node-version: '16.x'
+
+      - name: Install dependencies
+        run: npm install
+      
       - name: Login to Docker Hub
         uses: docker/login-action@v1
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
-      - name: Build and push Docker image
+
+      - name: Build Docker image
         uses: docker/build-push-action@v2
         with:
           context: .
           push: true
-          tags: jojomago/nextjs-github-action:latest
-          file: ./Dockerfile
-      - name: Deploy to Docker
-        uses: webfactory/ssh-agent@v0.5.0
+          tags: ${{ env.DOCKER_USERNAME }}/${{ env.DOCKER_REPO }}:latest
+
+      - name: Install SSH key
+        uses: webfactory/ssh-agent@v0.7.0
         with:
           ssh-private-key: ${{ secrets.SSH_EC2_KEY }}
-        env:
-          SSH_AUTH_SOCK: /tmp/ssh_agent.sock
+        id: ssh-agent
+
+      - name: Run commands with SSH agent
         run: |
-          ssh-add -k ${{ secrets.SSH_EC2_KEY }}
-          ssh -p ${{ secrets.SSH_PORT }} ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} 'docker stop nextjs-docker-container || true'
-          ssh -p ${{ secrets.SSH_PORT }} ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} 'docker rm nextjs-docker-container || true'
-          ssh -p ${{ secrets.SSH_PORT }} ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} 'docker pull jojomago/nextjs-github-action:latest'
-          ssh -p ${{ secrets.SSH_PORT }} ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} 'docker run -d -p 3000:3000 --name nextjs-docker-container jojomago/nextjs-github-action:latest'
+          eval $(ssh-agent -s)
+          ssh-add - <<< "${{ secrets.SSH_EC2_KEY }}"
+          echo $SSH_AUTH_SOCK
+          echo $SSH_AGENT_PID
+          echo "SSH_AUTH_SOCK=$SSH_AUTH_SOCK" >> $GITHUB_ENV
+          echo "SSH_AGENT_PID=$SSH_AGENT_PID" >> $GITHUB_ENV
+
+      - name: Deploy Docker image
+        env:
+          SSH_AUTH_SOCK: ${{ env.SSH_AUTH_SOCK }}
+        run: |
+          ssh -v -o StrictHostKeyChecking=no -A ${{ env.SSH_USER }}@${{ env.SSH_HOST }} << EOF
+            export PATH=$PATH:/usr/local/bin
+            docker login -u ${{ secrets.DOCKER_USERNAME }} -p ${{ secrets.DOCKER_PASSWORD }}
+            docker pull ${{ env.DOCKER_USERNAME }}/${{ env.DOCKER_REPO }}:latest
+            docker stop ${{ env.APP_NAME }} || true
+            docker rm ${{ env.APP_NAME }} || true
+            docker run -d --name ${{ env.APP_NAME }} -p 80:3000 ${{ env.DOCKER_USERNAME }}/${{ env.DOCKER_REPO }}:latest
+          EOF
