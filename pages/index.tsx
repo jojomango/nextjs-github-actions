@@ -1,5 +1,5 @@
 const page = () => {
-  return <div>jojo test nestjs homepage</div>
+  return <div>jojo test nextjs homepage</div>
 }
 
 export default page;
